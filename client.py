@@ -11,8 +11,10 @@ def gpioSetup():
 	# Pin numbering
 	gpio.setmode(gpio.BCM)
 	# Setting output-pin (read from pin 12)
-	gpio.setup(18, gpio.OUT)
+	gpio.setup(18, gpio.OUT) # PWM output
+	gpio.setup(19, gpio.OUT, initial=gpio.LOW) # Turn on or off
 	pwm = gpio.PWM(18, 100000)
+	pwm.start(dc)
 
 def connectionStatus(client, userdata, flags, rc):
 	mqttClient.subscribe("rpi/gpio")
@@ -26,10 +28,10 @@ def messageDecoder(client, userdata, msg):
 	#Change lamp state
 	if message == "on":
 		print("Lamp state switched to: ON")
-		pwm.start(dc)
+		gpio.output(19, gpio.HIGH)
 	elif message == "off":
 		print("Lamp state switched to: OFF")
-		pwm.stop()
+		gpio.output(19, gpio.LOW)
 	elif message[0:1] == "dc":
 		dc = int(message[3:end])
 		print("Lamp duty cycle switched to: " + dc + "%")
@@ -53,3 +55,4 @@ mqttClient.connect(serverAddress)
 
 # Monitoring for the Terminal
 mqttClient.loop_forever()
+pwm.stop()
