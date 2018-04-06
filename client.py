@@ -17,8 +17,6 @@ def gpioSetup():
 	# Setting output-pin (read from pin 12)
 	gpio.setup(18, gpio.OUT) # PWM output
 	gpio.setup(19, gpio.OUT, initial=gpio.LOW) # Turn on or off
-	pwm = gpio.PWM(18, 100000)
-	pwm.start(dc)
 
 def connectionStatus(client, userdata, flags, rc):
 	mqttClient.subscribe("rpi/gpio")
@@ -29,21 +27,25 @@ def messageDecoder(client, userdata, msg):
 	#Debugging prints included in the following
 	print(message)
 	
+	#Accessing the global variables
+	global pwm
+	global state
+	
 	#Change lamp state
-	if message == "on":
+	if "on" in message:
 		print("Lamp state switched to: ON")
 		printTime("ON")
 		gpio.output(19, gpio.HIGH)
-		state = true
-	elif message == "off":
+		state = True
+	elif "off" in message:
 		print("Lamp state switched to: OFF")
 		printTime("OFF")
 		gpio.output(19, gpio.LOW)
-		state = false
-	elif message[0:1] == "dc":
-		dc = int(message[3:end])
-		print("Lamp duty cycle switched to: " + dc + "%")
-		pwm.changeDutyCycle(dc)
+		state = False
+	elif "dc" in message:
+		dc = int(message[3:len(message)])
+		print("Lamp duty cycle switched to: " + str(dc) + "%")
+		pwm.ChangeDutyCycle(dc)
 		if state:
 			printTime("ON")
 		else:
@@ -61,9 +63,12 @@ def printTime(stateInput):
 	# Output relevant information to file
 	tid = time.strftime("%a, %d %b %Y %H:%M:%S", time.localtime())
 	f.write(' '.join((tid, '\t', stateInput, '\t\t' , str(dc), '\n')))
+	f.flush()
 
 # Setup functions
 gpioSetup()
+pwm = gpio.PWM(18, 100000)
+pwm.start(dc)
 fileInitialization()
 
 # Client name

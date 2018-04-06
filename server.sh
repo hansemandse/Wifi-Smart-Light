@@ -7,5 +7,6 @@ echo "The broadcasting IP of this RPi is: "
 ip addr | grep 'state UP' -A2 | tail -n1 | awk '{print $4}' | cut -f1 -d'/'
 
 echo "Starting mosquitto server"
-sudo systemctl stop mosquitto
+sudo systemctl kill mosquitto
+
 mosquitto -v
