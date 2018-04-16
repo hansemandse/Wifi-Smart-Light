@@ -3,20 +3,38 @@
 
 # Modules for the project
 import paho.mqtt.client as mqtt
-import RPi.GPIO as gpio
-import time
+import time, wiringpi
 
+dcRange = 100
+clockDivisor = 2
 dc = 0
 state = False
 f = open('data.txt', 'w')
 tid = time.strftime("%a, %d %b %Y %H:%M:%S", time.localtime())
+print("Client started at: " + tid)
 
 def gpioSetup():
-	# Pin numbering
-	gpio.setmode(gpio.BCM)
-	# Setting output-pin (read from pin 12)
-	gpio.setup(18, gpio.OUT) # PWM output
-	gpio.setup(19, gpio.OUT, initial=gpio.LOW) # Turn on or off
+	# Access global variables
+	global dcRange
+	global clockDivisor
+	
+	try:
+		# Setup board pin layout
+		wiringpi.wiringPiSetup()
+		wiringpi.pinMode(1, wiringpi.PWM_OUTPUT)
+		
+		# Set output to mark:space mode (to avoid frequency change)
+		wiringpi.pwmSetMode(wiringpi.PWM_MODE_MS)
+		
+		# Set output to approximately 100 kHz
+		wiringpi.pwmSetClock(2)
+		wiringpi.pwmSetRange(dcRange)
+		
+		# Initialize to 0% duty cycle
+		wiringpi.pwmWrite(1, 0) 
+		# pwmWrite requires numbers in range [0, 1024]
+	finally:
+		print("Completed setup")
 
 def connectionStatus(client, userdata, flags, rc):
 	mqttClient.subscribe("rpi/gpio")
@@ -24,28 +42,29 @@ def connectionStatus(client, userdata, flags, rc):
 def messageDecoder(client, userdata, msg):
 	message = msg.payload.decode(encoding='UTF-8')
 	
-	#Debugging prints included in the following
+	# Debugging prints included in the following
 	print(message)
 	
-	#Accessing the global variables
-	global pwm
+	# Access global variables
+	global dc
 	global state
 	
-	#Change lamp state
+	# Change lamp state
 	if "on" in message:
 		print("Lamp state switched to: ON")
 		printTime("ON")
-		gpio.output(19, gpio.HIGH)
+		wiringpi.pwmWrite(1, calcNewDC(dc)) # Return to previous duty
+		# cycle on correct scale
 		state = True
 	elif "off" in message:
 		print("Lamp state switched to: OFF")
 		printTime("OFF")
-		gpio.output(19, gpio.LOW)
+		wiringpi.pwmWrite(1, 0) # Turn duty cycle to 0%
 		state = False
 	elif "dc" in message:
 		dc = int(message[3:len(message)])
 		print("Lamp duty cycle switched to: " + str(dc) + "%")
-		pwm.ChangeDutyCycle(dc)
+		wiringpi.pwmWrite(1, calcNewDC(dc)) # Turn to new duty cycle
 		if state:
 			printTime("ON")
 		else:
@@ -65,23 +84,29 @@ def printTime(stateInput):
 	f.write(' '.join((tid, '\t', stateInput, '\t\t' , str(dc), '\n')))
 	f.flush()
 
-# Setup functions
-gpioSetup()
-pwm = gpio.PWM(18, 100000)
-pwm.start(dc)
-fileInitialization()
+def calcNewDC(dc):
+	global dcRange
+	# Calculate duty cycle on correct scale from percentage scale
+	return int((dc/100.0)*dcRange)
 
-# Client name
-clientName = "RPILamp"
-# Server IP
-serverAddress = "localhost"
-# Client instantiation
-mqttClient = mqtt.Client(clientName)
-mqttClient.on_connect = connectionStatus
-mqttClient.on_message = messageDecoder
-mqttClient.connect(serverAddress)
+try:
+	# Setup functions
+	gpioSetup()
+	fileInitialization()
 
-# Monitoring for the Terminal
-mqttClient.loop_forever()
-pwm.stop()
-f.close()
+	# Client name
+	clientName = "RPILamp"
+	# Server IP
+	serverAddress = "localhost"
+	# Client instantiation
+	mqttClient = mqtt.Client(clientName)
+	mqttClient.on_connect = connectionStatus
+	mqttClient.on_message = messageDecoder
+	mqttClient.connect(serverAddress)
+
+	# Monitoring for the Terminal
+	mqttClient.loop_forever()
+	
+finally:
+	wiringpi.pwmWrite(1, 0)
+	f.close()
