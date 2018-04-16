@@ -11,25 +11,17 @@ import CocoaMQTT
 class ViewController: UIViewController {
     // New MQTT client
     var mqttClient = CocoaMQTT(clientID: "iOS Controller", host: "172.20.10.2", port: 1883)
-    var connected = false
+    var timer = Timer()
     
     @IBOutlet weak var textField: UITextField!
     @IBOutlet weak var connectSwitch: UIButton!
     @IBOutlet weak var disconnectSwitch: UIButton!
     @IBOutlet weak var onOffSwitch: UISwitch!
     @IBOutlet weak var lightSlider: UISlider!
+    @IBOutlet weak var connectStatus: UITextField!
     
     // Setup functions
     override func viewDidLoad() {
-        // Try connecting to the standard IP
-        mqttClient.connect()
-        connected = evaluateConnection()
-        if !connected {
-            // Disable slider and on/off switch till connection has been established
-            onOffSwitch.isEnabled = false
-            lightSlider.isEnabled = false
-        }
-        
         // Add toolbar to keyboard
         let toolbar: UIToolbar = UIToolbar(frame: CGRect(x: 0, y: 0, width: self.view.frame.size.width, height: 30))
         let flexSpace = UIBarButtonItem(barButtonSystemItem: .flexibleSpace, target: nil, action: nil)
@@ -38,10 +30,11 @@ class ViewController: UIViewController {
         toolbar.sizeToFit()
         self.textField.inputAccessoryView = toolbar
         
-        // Maybe TODO: add stretchable images to ends of the slider (lamp on and lamp off)
-        
         // Add possibility of tapping in the view to close the keyboard
         self.view.addGestureRecognizer(UITapGestureRecognizer(target: self.view, action: #selector(endEditing(_:))))
+        
+        // Set up timer
+        timerInterval()
         
         // Necessary function to allow for total loading of view
         super.viewDidLoad()
@@ -65,9 +58,25 @@ class ViewController: UIViewController {
         }
     }
     
+    // Running a timer for the connection status
+    func timerInterval() {
+        timer = Timer.scheduledTimer(timeInterval: 1, target: self, selector: #selector(self.checkConnection), userInfo: nil, repeats: true)
+    }
+    @objc func checkConnection() {
+        let state = evaluateConnection()
+        if state {
+            connectStatus.text = "Connected";
+            connectStatus.textColor = UIColor.green
+        } else {
+            connectStatus.text = "Disconnected";
+            connectStatus.textColor = UIColor.red
+        }
+    }
+    
     // Managing the input from the text field
     @IBAction func enterIP(_ sender: UITextField) {
         if textField.text!.count <= 1 {
+            mqttClient = CocoaMQTT(clientID: "iOS Controller", host: "172.20.10.2", port: 1883)
             return
         }
         print("Entered IP: " + String(describing: textField.text!))
@@ -75,7 +84,8 @@ class ViewController: UIViewController {
             textField.textColor = UIColor.green
             connectSwitch.isEnabled = true
             disconnectSwitch.isEnabled = true
-            if connected {
+            let state = evaluateConnection()
+            if state {
                 mqttClient.disconnect()
             }
             mqttClient = CocoaMQTT(clientID: "iOS Controller", host: textField.text!, port: 1883)
@@ -99,33 +109,17 @@ class ViewController: UIViewController {
     
     // Connect and Disconnect methods
     @IBAction func connectButton(_ sender: UIButton) {
-        if !connected {
-            mqttClient.connect()
-            connected = evaluateConnection()
-            if !connected {
-                print("MQTT server connection could not be established")
-                return
-            } else {
-                print("MQTT server connection established")
-                onOffSwitch.isEnabled = true
-                lightSlider.isEnabled = true
-                mqttClient.publish("rpi/gpio", withString: "dc " + String(Int(lightSlider.value)))
-            }
-        }
+        print("MQTT server connection established")
+        mqttClient.connect()
     }
     @IBAction func disconnectButton(_ sender: UIButton) {
-        if connected {
-            print("MQTT server connection disabled")
-            onOffSwitch.isEnabled = false
-            lightSlider.isEnabled = false
-            mqttClient.disconnect()
-            connected = false
-        }
+        print("MQTT server connection disabled")
+        mqttClient.disconnect()
     }
     func evaluateConnection() -> Bool {
         let state = mqttClient.connState.description
         switch state {
-            case "connected", "connecting": return true
+            case "connected": return true
             default: return false
         }
     }
