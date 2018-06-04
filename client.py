@@ -5,9 +5,11 @@
 import paho.mqtt.client as mqtt
 import time, wiringpi
 
+nightMode = False
+nightCoef = 1.0
 dcRange = 100
 clockDivisor = 2
-dc = 0
+dc = 50
 state = False
 f = open('data.txt', 'w')
 tid = time.strftime("%a, %d %b %Y %H:%M:%S", time.localtime())
@@ -32,7 +34,7 @@ def gpioSetup():
 		
 		# Initialize to 0% duty cycle
 		wiringpi.pwmWrite(1, 0) 
-		# pwmWrite requires numbers in range [0, 1024]
+		# pwmWrite requires numbers in range [0, dcRange]
 	finally:
 		print("Completed setup")
 
@@ -56,19 +58,44 @@ def messageDecoder(client, userdata, msg):
 		wiringpi.pwmWrite(1, calcNewDC(dc)) # Return to previous duty
 		# cycle on correct scale
 		state = True
+		
 	elif "off" in message:
 		print("Lamp state switched to: OFF")
 		printTime("OFF")
 		wiringpi.pwmWrite(1, 0) # Turn duty cycle to 0%
 		state = False
+		
 	elif "dc" in message:
 		dc = int(message[3:len(message)])
 		print("Lamp duty cycle switched to: " + str(dc) + "%")
-		wiringpi.pwmWrite(1, calcNewDC(dc)) # Turn to new duty cycle
+		if (dc == 0):
+			wiringpi.pwmWrite(1, 0)
+		else:
+			if nightMode:
+				wiringpi.pwmWrite(1, calcNewDCNight(dc)) # Turn to new duty cycle
+			else:
+				wiringpi.pwmWrite(1, calcNewDC(dc))
 		if state:
 			printTime("ON")
 		else:
 			printTime("OFF")
+		
+	elif "light" in message:
+		print("hello")
+		# REAGER OG ÆNDR KOEFFICIENTEN
+		
+	elif "night" in message:
+		dc = int(message[6:len(message)])
+		print("Night mode activated with: " + str(dc) + "%")
+		wiringpi.pwmWrite(1, calcNewDCNight(dc))
+		printTime("NIGHT")
+		
+	elif "day" in message:
+		dc = int(message[4:len(message)])
+		print("Night mode deactivated with: " + str(dc) + "%")
+		wiringpi.pwmWrite(1, calcNewDC(dc))
+		printTime("DAY")
+		
 	else:
 		print("Unknown message!")
 
@@ -85,9 +112,11 @@ def printTime(stateInput):
 	f.flush()
 
 def calcNewDC(dc):
-	global dcRange
 	# Calculate duty cycle on correct scale from percentage scale
-	return int((dc/100.0)*dcRange)
+	return int(50+0.35*dc)
+def calcNewDCNight(dc):
+	global nightCoef
+	return int(calcNewDC*nightCoef)
 
 try:
 	# Setup functions
@@ -106,6 +135,9 @@ try:
 
 	# Monitoring for the Terminal
 	mqttClient.loop_forever()
+	
+except KeyboardInterrupt:
+	mqttClient.disconnect()
 	
 finally:
 	wiringpi.pwmWrite(1, 0)
