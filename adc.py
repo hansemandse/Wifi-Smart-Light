@@ -11,7 +11,6 @@ spi = spidev.SpiDev()
 def gpioSetup():
 	# Setup board pin layout
 	wiringpi.wiringPiSetup()
-	wiringpi.pinMode(10, wiringpi.OUTPUT)
 	
 	# Access global variables
 	global spi
@@ -27,9 +26,10 @@ def gpioSetup():
 def readData():
 	# Read SPI data from ADS7841, 4 channels and 12 bit resolution
 	# Control byte is 0b10010100
-	result = spi.xfer([0x94, 0x00, 0x00])
-	# GØR NOGET VED OUTPUTTET
-	return result
+	data = spi.xfer2([0x94, 0x00, 0x00])
+	# data[1] holds 0 followed by the 7 first bits of the output, where
+	# as data[2] holds the remaining 5 bits followed by three 0's
+	return (((data[1] << 8) + data[2]) >> 3)
 	
 try:
 	# Setup functions
@@ -46,12 +46,11 @@ try:
 	# Continously read values from ADC
 	while True:
 		data = readData()
-		print(str(data))
-		# ÆNDR FØLGENDE, SÅ DET RIGTIGE SENDES
-		mqttClient.publish("rpi/gpio", "light " + hex(data[0]))
+		print("light " + str(data))
+		mqttClient.publish("rpi/gpio", "light " + hex(data))
 		
 		# Wait before next measurement
-		time.sleep(10)
+		time.sleep(1)
 		
 except KeyboardInterrupt:
 	spi.close()
