@@ -47,10 +47,10 @@ try:
 	while True:
 		data = readData()
 		print("light " + str(data))
-		mqttClient.publish("rpi/gpio", "light " + hex(data))
+		mqttClient.publish("rpi/gpio", "light " + str(data))
 		
 		# Wait before next measurement
-		time.sleep(1)
+		time.sleep(0.02)
 		
 except KeyboardInterrupt:
 	spi.close()

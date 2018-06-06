@@ -5,6 +5,8 @@
 import paho.mqtt.client as mqtt
 import time, wiringpi
 
+maxLight = 1000
+measurements = [100, 100, 100, 100, 100]
 nightMode = False
 dcRange = 100
 clockDivisor = 2
@@ -44,11 +46,14 @@ def messageDecoder(client, userdata, msg):
 	message = msg.payload.decode(encoding='UTF-8')
 	
 	# Debugging prints included in the following
-	print(message)
+	#print(message)
 	
 	# Access global variables
 	global dc
 	global state
+	global maxLight
+	global nightMode
+	global measurements
 	
 	# Change lamp state
 	if "on" in message:
@@ -66,7 +71,7 @@ def messageDecoder(client, userdata, msg):
 		
 	elif "dc" in message:
 		dc = int(message[3:len(message)])
-		print("Lamp duty cycle changed to: " + str(dc) + "%")
+		print("Lamp duty cycle switched to: " + str(dc) + "%")
 		if (dc == 0):
 			wiringpi.pwmWrite(1, 0)
 		else:
@@ -78,14 +83,26 @@ def messageDecoder(client, userdata, msg):
 		
 	elif "light" in message:
 		if nightMode:
-			# INDSÆT KODE TIL BEHANDLING AF OUTPUT FRA ADC-KODEN
+			# Move former five measurements saved in array
+			for i in range(3, -1, -1):
+				measurements[i+1] = measurements[i]
+			data = int(message[6:len(message)])
+			measurements[0] = data
+			if data > maxLight:
+				maxLight = data
+			# Calculate new duty cycle from average of last five
+			# measurements saved in array
+			dc = 50 + (sum(measurements)/5)/float(maxLight)*35
+			wiringpi.pwmWrite(1, int(dc))
 		
 	elif "night" in message:
 		nightMode = True
+		print("Night mode activated")
 		printTime("NIGHT")
 		
 	elif "day" in message:
 		nightMode = False
+		print("Night mode deactivated")
 		printTime("DAY")
 		
 	else:
@@ -98,7 +115,6 @@ def fileInitialization():
 	printTime("OFF")
 
 def printTime(stateInput):
-	global dc
 	# Output relevant information to file
 	tid = time.strftime("%a, %d %b %Y %H:%M:%S", time.localtime())
 	f.write(' '.join((tid, '\t', stateInput, '\t\t' , str(dc), '\n')))
