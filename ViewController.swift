@@ -10,8 +10,9 @@ import CocoaMQTT
 
 class ViewController: UIViewController {
     // New MQTT client
-    var mqttClient = CocoaMQTT(clientID: "iOS Controller", host: "172.20.10.2", port: 1883)
+    var mqttClient = CocoaMQTT(clientID: "iOS Controller", host: "172.20.10.5", port: 1883)
     var timer = Timer()
+    var previousState = false
     
     @IBOutlet weak var textField: UITextField!
     @IBOutlet weak var connectSwitch: UIButton!
@@ -19,6 +20,8 @@ class ViewController: UIViewController {
     @IBOutlet weak var onOffSwitch: UISwitch!
     @IBOutlet weak var lightSlider: UISlider!
     @IBOutlet weak var connectStatus: UITextField!
+    @IBOutlet weak var nightModeSwitch: UISwitch!
+    
     
     // Setup functions
     override func viewDidLoad() {
@@ -36,6 +39,7 @@ class ViewController: UIViewController {
         // Set up timer
         timerInterval()
         
+        lightSlider.isEnabled = false
         // Necessary function to allow for total loading of view
         super.viewDidLoad()
     }
@@ -52,11 +56,40 @@ class ViewController: UIViewController {
     // ON/OFF switching method
     @IBAction func stateSwitch(_ sender: UISwitch) {
         if (sender.isOn) {
+            lightSlider.isEnabled = true
             mqttClient.publish("rpi/gpio", withString: "on")
+            print("on")
         } else {
+            lightSlider.isEnabled = false
             mqttClient.publish("rpi/gpio", withString: "off")
+            print("off")
         }
     }
+    @IBAction func nightSwitch(_ sender: UISwitch) {
+        if (sender.isOn) {
+            if (onOffSwitch.isOn) {
+                previousState = true
+                lightSlider.isEnabled = false
+                onOffSwitch.setOn(false, animated: true)
+            } else {
+                previousState = false
+            }
+            onOffSwitch.isEnabled = false
+            mqttClient.publish("rpi/gpio", withString: "night")
+            print("night")
+        } else {
+            onOffSwitch.isEnabled = true
+            if (previousState) {
+                lightSlider.isEnabled = true
+                onOffSwitch.setOn(true, animated: true)
+            } else {
+                mqttClient.publish("rpi/gpio", withString: "off")
+            }
+            mqttClient.publish("rpi/gpio", withString: "day")
+            print("day")
+        }
+    }
+    
     
     // Running a timer for the connection status
     func timerInterval() {
@@ -76,7 +109,7 @@ class ViewController: UIViewController {
     // Managing the input from the text field
     @IBAction func enterIP(_ sender: UITextField) {
         if textField.text!.count <= 1 {
-            mqttClient = CocoaMQTT(clientID: "iOS Controller", host: "172.20.10.2", port: 1883)
+            mqttClient = CocoaMQTT(clientID: "iOS Controller", host: "172.20.10.5", port: 1883)
             return
         }
         print("Entered IP: " + String(describing: textField.text!))
@@ -118,6 +151,7 @@ class ViewController: UIViewController {
     }
     func evaluateConnection() -> Bool {
         let state = mqttClient.connState.description
+        // Add live updates of the slider based upon messages from the RPi
         switch state {
             case "connected": return true
             default: return false
