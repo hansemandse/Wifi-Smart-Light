@@ -12,7 +12,6 @@ class ViewController: UIViewController {
     // New MQTT client
     var mqttClient = CocoaMQTT(clientID: "iOS Controller", host: "172.20.10.5", port: 1883)
     var timer = Timer()
-    var previousState = false
     
     @IBOutlet weak var textField: UITextField!
     @IBOutlet weak var connectSwitch: UIButton!
@@ -34,8 +33,7 @@ class ViewController: UIViewController {
         self.textField.inputAccessoryView = toolbar
         
 		// Subscribe to the MQTT server
-		mqttClient.subscribe("ios/back")
-		mqttClient.on_message = messageDecoder
+        mqttClient.delegate = self
 		
         // Add possibility of tapping in the view to close the keyboard
         self.view.addGestureRecognizer(UITapGestureRecognizer(target: self.view, action: #selector(endEditing(_:))))
@@ -56,19 +54,13 @@ class ViewController: UIViewController {
     @objc func endEditing(_ sender: UITapGestureRecognizer!) {
         textField.resignFirstResponder()
     }
-	func messageDecoder(client, userdata, msg) {
-		message = msg.payload.decode(encoding='UTF-8')
-		if (Int(message) >= 0 && Int(message) <= 100) {
-			lightSlider.setValue(Int(message), animated: true)
-		} else {
-			print("Unknown message")
-		}
-	}
     
     // ON/OFF switching method
     @IBAction func stateSwitch(_ sender: UISwitch) {
         if (sender.isOn) {
-            lightSlider.isEnabled = true
+            if (!nightModeSwitch.isOn) {
+                lightSlider.isEnabled = true
+            }
             mqttClient.publish("rpi/gpio", withString: "on")
             print("on")
         } else {
@@ -79,29 +71,21 @@ class ViewController: UIViewController {
     }
     @IBAction func nightSwitch(_ sender: UISwitch) {
         if (sender.isOn) {
-            if (onOffSwitch.isOn) {
-                previousState = true
+            mqttClient.subscribe("rpi/back")
+            if (lightSlider.isEnabled) {
                 lightSlider.isEnabled = false
-                onOffSwitch.setOn(false, animated: true)
-            } else {
-                previousState = false
             }
-            onOffSwitch.isEnabled = false
             mqttClient.publish("rpi/gpio", withString: "night")
             print("night")
         } else {
-            onOffSwitch.isEnabled = true
-            if (previousState) {
+            mqttClient.unsubscribe("rpi/back")
+            if (onOffSwitch.isEnabled) {
                 lightSlider.isEnabled = true
-                onOffSwitch.setOn(true, animated: true)
-            } else {
-                mqttClient.publish("rpi/gpio", withString: "off")
             }
             mqttClient.publish("rpi/gpio", withString: "day")
             print("day")
         }
     }
-    
     
     // Running a timer for the connection status
     func timerInterval() {
@@ -168,5 +152,48 @@ class ViewController: UIViewController {
             case "connected": return true
             default: return false
         }
+    }
+}
+extension ViewController: CocoaMQTTDelegate {
+    func mqtt(_ mqtt: CocoaMQTT, didConnect host: String, port: Int) {
+    }
+    
+    func mqtt(_ mqtt: CocoaMQTT, didReceiveMessage message: CocoaMQTTMessage, id: UInt16 ) {
+        let msgString = Float(message.string!)!
+        if (msgString >= 0 && msgString <= 100) {
+            lightSlider.setValue(msgString, animated: true)
+        }
+    }
+    
+    func mqtt(_ mqtt: CocoaMQTT, didReceive trust: SecTrust, completionHandler: @escaping (Bool) -> Void) {
+        completionHandler(true)
+    }
+    
+    func mqtt(_ mqtt: CocoaMQTT, didConnectAck ack: CocoaMQTTConnAck) {
+    }
+    
+    func mqtt(_ mqtt: CocoaMQTT, didPublishMessage message: CocoaMQTTMessage, id: UInt16) {
+    }
+    
+    func mqtt(_ mqtt: CocoaMQTT, didPublishAck id: UInt16) {
+    }
+    
+    func mqtt(_ mqtt: CocoaMQTT, didSubscribeTopic topic: String) {
+        print("Subscribed to rpi/back")
+    }
+    
+    func mqtt(_ mqtt: CocoaMQTT, didUnsubscribeTopic topic: String) {
+    }
+    
+    func mqttDidPing(_ mqtt: CocoaMQTT) {
+    }
+    
+    func mqttDidReceivePong(_ mqtt: CocoaMQTT) {
+    }
+    
+    func mqttDidDisconnect(_ mqtt: CocoaMQTT, withError err: Error?) {
+    }
+    
+    func _console(_ info: String) {
     }
 }
