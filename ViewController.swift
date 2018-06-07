@@ -33,6 +33,10 @@ class ViewController: UIViewController {
         toolbar.sizeToFit()
         self.textField.inputAccessoryView = toolbar
         
+		// Subscribe to the MQTT server
+		mqttClient.subscribe("ios/back")
+		mqttClient.on_message = messageDecoder
+		
         // Add possibility of tapping in the view to close the keyboard
         self.view.addGestureRecognizer(UITapGestureRecognizer(target: self.view, action: #selector(endEditing(_:))))
         
@@ -52,6 +56,14 @@ class ViewController: UIViewController {
     @objc func endEditing(_ sender: UITapGestureRecognizer!) {
         textField.resignFirstResponder()
     }
+	func messageDecoder(client, userdata, msg) {
+		message = msg.payload.decode(encoding='UTF-8')
+		if (Int(message) >= 0 && Int(message) <= 100) {
+			lightSlider.setValue(Int(message), animated: true)
+		} else {
+			print("Unknown message")
+		}
+	}
     
     // ON/OFF switching method
     @IBAction func stateSwitch(_ sender: UISwitch) {
