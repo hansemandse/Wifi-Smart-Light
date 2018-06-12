@@ -50,7 +50,7 @@ try:
 		mqttClient.publish("rpi/gpio", "light " + str(data))
 		
 		# Wait before next measurement
-		time.sleep(0.02)
+		time.sleep(0.04)
 		
 except KeyboardInterrupt:
 	spi.close()

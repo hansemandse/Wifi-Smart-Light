@@ -3,6 +3,7 @@
 
 # Modules for the project
 import paho.mqtt.client as mqtt
+import RPi.GPIO as GPIO
 import time, wiringpi
 
 maxLight = 1000
@@ -12,7 +13,7 @@ dcRange = 100
 clockDivisor = 2
 dc = 50
 state = False
-f = open('data.txt', 'w')
+f = open('data2.txt', 'w')
 tid = time.strftime("%a, %d %b %Y %H:%M:%S", time.localtime())
 print("Client started at: " + tid)
 
@@ -20,11 +21,18 @@ def gpioSetup():
 	# Access global variables
 	global dcRange
 	global clockDivisor
+	global pwm
+	global pwm2
 	
 	try:
 		# Setup board pin layout
 		wiringpi.wiringPiSetup()
 		wiringpi.pinMode(1, wiringpi.PWM_OUTPUT)
+		GPIO.setmode(GPIO.BCM)
+		GPIO.setup(13, GPIO.OUT)
+		GPIO.setup(19, GPIO.OUT)
+		pwm = GPIO.PWM(13, 1000)
+		pwm2 = GPIO.PWM(19, 1000)
 		
 		# Set output to mark:space mode (to avoid frequency change)
 		wiringpi.pwmSetMode(wiringpi.PWM_MODE_MS)
@@ -33,8 +41,10 @@ def gpioSetup():
 		wiringpi.pwmSetClock(2)
 		wiringpi.pwmSetRange(dcRange)
 		
-		# Initialize to 0% duty cycle
-		wiringpi.pwmWrite(1, 0) 
+		# Initialize duty cycles
+		wiringpi.pwmWrite(1, 0)
+		pwm.start(50)
+		pwm2.start(50)
 		# pwmWrite requires numbers in range [0, dcRange]
 	finally:
 		print("Completed setup")
@@ -54,12 +64,13 @@ def messageDecoder(client, userdata, msg):
 	global maxLight
 	global nightMode
 	global measurements
+	global pwm, pwm2
 	
 	# Change lamp state
 	if "on" in message:
 		print("Lamp state switched to: ON")
 		printTime("ON")
-		wiringpi.pwmWrite(1, calcNewDC(dc)) # Return to previous duty
+		wiringpi.pwmWrite(1, 85) # Return to previous duty
 		# cycle on correct scale
 		state = True
 		
@@ -72,44 +83,21 @@ def messageDecoder(client, userdata, msg):
 	elif "dc" in message:
 		dc = int(message[3:len(message)])
 		#print("Lamp duty cycle switched to: " + str(dc) + "%")
-		if (dc == 0):
-			wiringpi.pwmWrite(1, 0)
-		else:
-			wiringpi.pwmWrite(1, calcNewDC(dc))
-			print(calcNewDC(dc))
+		pwm.ChangeDutyCycle(dc)
+		pwm2.ChangeDutyCycle(100-dc)
 		if state:
 			printTime("ON")
 		else:
 			printTime("OFF")
 		
 	elif "light" in message:
-		if nightMode and state:
-			# Move former five measurements saved in array
-			for i in range(len(measurements) - 2, -1, -1):
-				measurements[i+1] = measurements[i]
-			data = int(message[6:len(message)])
-			measurements[0] = data
-			if data > maxLight:
-				maxLight = data
-			# Calculate new duty cycle from average of last five
-			# measurements saved in array
-			measAvg = sum(measurements)/float(len(measurements))
-			if (data <= int(measAvg) + 50 and data >= int(measAvg) - 50):
-				offset = measAvg/maxLight
-				newDC = int(50 + offset*35)
-				if (newDC > dc):
-					dc += 1
-					wiringpi.pwmWrite(1, dc)
-				elif (newDC < dc):
-					dc -= 1
-					wiringpi.pwmWrite(1, dc)
-				mqttClient.publish("rpi/back", str((dc-50)/0.35))
+		if nightMode:
+			print(message)
 		
 	elif "night" in message:
 		nightMode = True
 		print("Night mode activated")
 		printTime("NIGHT")
-
 		
 	elif "day" in message:
 		nightMode = False
@@ -130,10 +118,6 @@ def printTime(stateInput):
 	tid = time.strftime("%a, %d %b %Y %H:%M:%S", time.localtime())
 	f.write(' '.join((tid, '\t', stateInput, '\t\t' , str(dc), '\n')))
 	f.flush()
-
-def calcNewDC(dc):
-	# Calculate duty cycle on correct scale from percentage scale
-	return int(50+0.35*dc)
 
 try:
 	# Setup functions
@@ -158,4 +142,7 @@ except KeyboardInterrupt:
 	
 finally:
 	wiringpi.pwmWrite(1, 0)
+	pwm.stop()
+	pwm2.stop()
+	GPIO.cleanup()
 	f.close()

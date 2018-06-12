@@ -83,7 +83,7 @@ def messageDecoder(client, userdata, msg):
 			printTime("OFF")
 		
 	elif "light" in message:
-		if nightMode and state:
+		if nightMode:
 			# Move former five measurements saved in array
 			for i in range(len(measurements) - 2, -1, -1):
 				measurements[i+1] = measurements[i]
@@ -91,19 +91,12 @@ def messageDecoder(client, userdata, msg):
 			measurements[0] = data
 			if data > maxLight:
 				maxLight = data
-			# Calculate new duty cycle from average of last five
+			# Calculate new duty cycle from average of last 25
 			# measurements saved in array
-			measAvg = sum(measurements)/float(len(measurements))
-			if (data <= int(measAvg) + 50 and data >= int(measAvg) - 50):
-				offset = measAvg/maxLight
-				newDC = int(50 + offset*35)
-				if (newDC > dc):
-					dc += 1
-					wiringpi.pwmWrite(1, dc)
-				elif (newDC < dc):
-					dc -= 1
-					wiringpi.pwmWrite(1, dc)
-				mqttClient.publish("rpi/back", str((dc-50)/0.35))
+			offset = (sum(measurements)/float(len(measurements)))/maxLight
+			dc = 50 + offset*35
+			mqttClient.publish("rpi/back", str(offset*100))
+			wiringpi.pwmWrite(1, int(dc))
 		
 	elif "night" in message:
 		nightMode = True
