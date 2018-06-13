@@ -32,7 +32,6 @@ def gpioSetup():
 		GPIO.setup(13, GPIO.OUT)
 		GPIO.setup(19, GPIO.OUT)
 		pwm = GPIO.PWM(13, 1000)
-		pwm2 = GPIO.PWM(19, 1000)
 		
 		# Set output to mark:space mode (to avoid frequency change)
 		wiringpi.pwmSetMode(wiringpi.PWM_MODE_MS)
@@ -44,7 +43,6 @@ def gpioSetup():
 		# Initialize duty cycles
 		wiringpi.pwmWrite(1, 0)
 		pwm.start(50)
-		pwm2.start(50)
 		# pwmWrite requires numbers in range [0, dcRange]
 	finally:
 		print("Completed setup")
@@ -84,7 +82,6 @@ def messageDecoder(client, userdata, msg):
 		dc = int(message[3:len(message)])
 		#print("Lamp duty cycle switched to: " + str(dc) + "%")
 		pwm.ChangeDutyCycle(dc)
-		pwm2.ChangeDutyCycle(100-dc)
 		if state:
 			printTime("ON")
 		else:
@@ -143,6 +140,5 @@ except KeyboardInterrupt:
 finally:
 	wiringpi.pwmWrite(1, 0)
 	pwm.stop()
-	pwm2.stop()
 	GPIO.cleanup()
 	f.close()
